@@ -1,5 +1,5 @@
-# Plain HTTP on port 8722. Fine on a LAN or behind a VPN.
-# Exposing it to the internet? Use compose.caddy.yml instead (adds TLS).
+# Plain HTTP on port 8722. Meant for a machine at home that you reach over a VPN
+# (Tailscale, WireGuard). Don't forward this port to the internet; see README.
 services:
   tterm-sync:
     image: ghcr.io/tterminal-app/tterminal-sync:latest

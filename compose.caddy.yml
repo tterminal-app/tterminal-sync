@@ -1,4 +1,6 @@
 # Sync server behind Caddy with automatic HTTPS (Let's Encrypt).
+# Only if it really has to be on the public internet; the recommended setup is
+# keeping it at home and connecting over a VPN (see README).
 #
 #   1. Point a DNS record (e.g. sync.example.com) at this machine
 #   2. Put that name in Caddyfile

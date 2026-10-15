@@ -11,6 +11,8 @@ It keeps your hosts and SSH keys in sync across devices without an account and w
 
 ## Quick start
 
+On an always-on machine at home (see [the recommended setup](#recommended-setup-at-home-over-a-vpn)):
+
 ```sh
 docker run -d --name tterm-sync \
   -p 8722:8722 -v tterm-data:/data \
@@ -33,9 +35,20 @@ Then in the app:
 
 That's it. Changes sync when the app starts, a couple of seconds after you edit something, and whenever you tap **Sync now**.
 
-## Over the internet: put TLS in front
+## Recommended setup: at home, over a VPN
 
-The server speaks plain HTTP. Your data is end-to-end encrypted either way, but the bearer token travels with every request, so on an untrusted network you want HTTPS. The included Caddy setup gets a certificate automatically:
+Run the server on something you already own that stays on: a home server, a NAS, a Raspberry Pi, a Mac mini. **Don't forward a port to it from the internet.** When you're away, reach it through a VPN instead:
+
+- **Tailscale** (easiest): install it on the server and on your iPhone / iPad, sign in to the same tailnet, and use `http://<server's Tailscale name or 100.x address>:8722` in the app. The same address works at home and away.
+- **WireGuard**: if your router or NAS already runs a WireGuard server, connect with the WireGuard app and use the server's LAN address.
+
+Nothing on the internet can reach the server this way, so nobody can probe it, create vaults on it or sniff your token. Your data is end-to-end encrypted regardless; this just closes the rest of the gaps. Plain HTTP is fine here because the VPN tunnel is already encrypted.
+
+One thing to know: iOS runs one VPN at a time, so if you use another VPN on your phone, sync while connected to the one that reaches home.
+
+## If it has to be on the public internet
+
+Not recommended, but if you do, put TLS in front. The bearer token travels with every request, and anyone who can reach the server can create vaults on it. The included Caddy setup gets a certificate automatically:
 
 ```sh
 # 1. point sync.example.com at this machine
@@ -44,8 +57,6 @@ docker compose -f compose.caddy.yml up -d
 ```
 
 Use `https://sync.example.com` in the app.
-
-On a home LAN or over a VPN (Tailscale, WireGuard), plain `docker-compose.yml` is fine.
 
 ## Without Docker
 
@@ -76,8 +87,8 @@ It can't see: anything inside a record. Host names, addresses, usernames, passwo
 A few things worth knowing:
 
 - **The pairing string is the keys to the kingdom.** It contains the server address, the token and the encryption key. Share it only between your own devices.
-- **Anyone who can reach the server can create a vault.** They can't touch yours, but they can use your disk. If you expose it publicly, consider putting it behind a VPN or an authenticating proxy.
-- **Someone with your token (e.g. sniffed over plain HTTP) still can't read anything**, but they could push bogus updates to your vault. Another reason to use TLS outside your LAN.
+- **Anyone who can reach the server can create a vault.** They can't touch yours, but they can use your disk. Another reason to keep it behind a VPN.
+- **Someone with your token (e.g. sniffed over plain HTTP on an untrusted network) still can't read anything**, but they could push bogus updates to your vault.
 - On the device, the vault key currently lives in a file next to the vault inside the app's sandbox. Moving it into the iOS Keychain is planned; the file format won't change.
 
 The wire format, crypto and sync rules are described in [PROTOCOL.md](PROTOCOL.md).
@@ -108,6 +119,8 @@ tterminal 的自架同步伺服器。tterminal 是 iPhone / iPad 上的 SSH 終�
 
 ### 快速開始
 
+在家裡一直開著的那台機器上(見[建議的架法](#建議的架法放在家裡用-vpn-連回去)):
+
 ```sh
 docker run -d --name tterm-sync \
   -p 8722:8722 -v tterm-data:/data \
@@ -125,9 +138,20 @@ docker run -d --name tterm-sync \
 
 之後 app 啟動時、修改後兩秒、按「立即同步」時都會同步。
 
-### 要放到公網:前面加 TLS
+### 建議的架法:放在家裡,用 VPN 連回去
 
-伺服器本身只講 HTTP。資料本來就是端對端加密,但每個請求都帶著 token,在不信任的網路上請走 HTTPS。附的 Caddy 設定會自動申請憑證:
+把伺服器跑在你自己家裡一直開著的設備上:家用伺服器、NAS、樹莓派、Mac mini 都可以。**不要從路由器開 port 對外。** 出門在外的時候,用 VPN 連回家再同步:
+
+- **Tailscale**(最簡單):伺服器和 iPhone / iPad 都裝 Tailscale、登入同一個 tailnet,app 裡填 `http://<伺服器的 Tailscale 名稱或 100.x 位址>:8722`。在家、在外面都是同一個位址。
+- **WireGuard**:如果你的路由器或 NAS 已經有 WireGuard 伺服器,用 WireGuard app 連回家,app 裡填伺服器的區網位址。
+
+這樣網路上沒有人連得到這台伺服器,也就沒辦法掃描它、在上面建 vault,或側錄你的 token。資料本來就是端對端加密,這樣做是把剩下的破口也補起來。VPN 隧道本身已經加密,所以這裡用 HTTP 就可以。
+
+要注意一點:iOS 同時只能開一個 VPN。如果手機平常有開別的 VPN,要同步時記得切到連回家的那一個。
+
+### 一定要放公網的話
+
+不建議,真的要的話請加上 TLS:每個請求都帶著 token,而且連得到伺服器的人都能在上面建立 vault。附的 Caddy 設定會自動申請憑證:
 
 ```sh
 # 1. 把 sync.example.com 指到這台機器
@@ -135,7 +159,7 @@ docker run -d --name tterm-sync \
 docker compose -f compose.caddy.yml up -d
 ```
 
-app 裡改填 `https://sync.example.com`。在家裡的區網或 VPN(Tailscale、WireGuard)裡,直接用 `docker-compose.yml` 就好。
+app 裡改填 `https://sync.example.com`。
 
 ### 不用 Docker
 
@@ -159,8 +183,8 @@ cargo build --release -p tterm-server
 幾件要知道的事:
 
 - **配對字串就是全部的鑰匙**:裡面有伺服器位址、token 和加密金鑰,只在自己的裝置之間傳。
-- **連得到伺服器的人都能建立新的 vault**:動不到你的資料,但會佔你的硬碟。放公網的話,建議放在 VPN 或有驗證的反向代理後面。
-- **token 被拿到(例如走明文 HTTP 被側錄)也讀不到內容**,但對方可以往你的 vault 推假的更新。這也是公網要上 TLS 的原因。
+- **連得到伺服器的人都能建立新的 vault**:動不到你的資料,但會佔你的硬碟。這也是建議放在 VPN 後面的原因之一。
+- **token 被拿到(例如在不信任的網路上走明文 HTTP 被側錄)也讀不到內容**,但對方可以往你的 vault 推假的更新。
 - 目前裝置上的 vault 金鑰是存在 app 沙盒裡、跟 vault 放在一起的檔案,之後會移進 iOS 鑰匙圈,檔案格式不會變。
 
 傳輸格式、加密方式和同步規則見 [PROTOCOL.md](PROTOCOL.md)。

@@ -68,16 +68,18 @@
 
 <section>
   <h2>Sync between devices</h2>
-  <p>There's no account. To sync hosts and keys across devices, run your own sync server. With Docker it's one command:</p>
+  <p>There's no account. To sync hosts and keys across devices, run your own sync server.</p>
+  <p><b>Recommended setup:</b> put it on something at home that stays on (a NAS, a Raspberry Pi, a home server, a Mac mini) and <b>don't open a port to the internet</b>. When you're away, connect home over a VPN such as <a href="https://tailscale.com/">Tailscale</a> or WireGuard, then sync. Nobody on the internet can reach your server, and the data is encrypted on top of that.</p>
+  <p>On that machine, with Docker, it's one command:</p>
   <pre><code>docker run -d --name tterm-sync -p 8722:8722 \
   -v tterm-data:/data --restart unless-stopped \
   ghcr.io/tterminal-app/tterminal-sync:latest</code></pre>
   <ol>
-    <li>On your first device: Settings → Sync, enter <code>http://&lt;server&gt;:8722</code> and tap <b>Create sync</b>.</li>
+    <li>On your first device: Settings → Sync, enter <code>http://&lt;server&gt;:8722</code> and tap <b>Create sync</b>. With Tailscale, use the server's Tailscale name or its 100.x address; it works both at home and away.</li>
     <li>Tap <b>Export pairing string</b> and copy it.</li>
     <li>On each other device: Settings → Sync → <b>Paste pairing string</b>.</li>
   </ol>
-  <p>Everything is encrypted on the device first, so the server only stores ciphertext. The pairing string contains the decryption key: keep it between your own devices. If the server is reachable from the internet, put HTTPS in front of it. Details are on the <a href="https://github.com/tterminal-app/tterminal-sync">server's GitHub page</a>.</p>
+  <p>Everything is encrypted on the device first, so the server only stores ciphertext. The pairing string contains the decryption key: keep it between your own devices. Also, iOS runs one VPN at a time, so if you normally use a different VPN, switch to the one that reaches home before syncing. More details (including HTTPS, if it really must be on the internet) are on the <a href="https://github.com/tterminal-app/tterminal-sync">server's GitHub page</a>.</p>
 </section>
 
 <section>

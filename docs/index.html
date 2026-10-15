@@ -68,16 +68,18 @@
 
 <section>
   <h2>多台裝置同步</h2>
-  <p>tterminal 不用註冊帳號。想在多台裝置之間同步主機和金鑰,需要自己架一台同步伺服器,有 Docker 的話一行指令就好:</p>
+  <p>tterminal 不用註冊帳號。想在多台裝置之間同步主機和金鑰,需要自己架一台同步伺服器。</p>
+  <p><b>建議的架法:</b>放在家裡一直開著的設備上(NAS、樹莓派、家用伺服器、Mac mini 都可以),<b>不要開 port 對外</b>。出門在外時,用 VPN 連回家再同步,例如 <a href="https://tailscale.com/">Tailscale</a> 或 WireGuard。這樣網路上沒人連得到你的伺服器,資料又本來就是加密的,最安心。</p>
+  <p>在那台機器上,有 Docker 的話一行指令就好:</p>
   <pre><code>docker run -d --name tterm-sync -p 8722:8722 \
   -v tterm-data:/data --restart unless-stopped \
   ghcr.io/tterminal-app/tterminal-sync:latest</code></pre>
   <ol>
-    <li>第一台裝置:設定 → 同步,輸入 <code>http://&lt;伺服器位址&gt;:8722</code>,按 <b>建立同步</b>。</li>
+    <li>第一台裝置:設定 → 同步,輸入 <code>http://&lt;伺服器位址&gt;:8722</code>,按 <b>建立同步</b>。用 Tailscale 的話,位址填伺服器在 Tailscale 裡的名稱或 100.x 開頭的 IP,在家在外都通。</li>
     <li>按 <b>匯出配對字串</b> 並複製。</li>
     <li>其他裝置:設定 → 同步 → <b>貼上配對字串加入</b>。</li>
   </ol>
-  <p>資料在裝置上就先加密,伺服器只存得到密文。配對字串裡有解密金鑰,只在自己的裝置之間傳,不要貼到別的地方。要放到公網的話請加上 HTTPS,做法和更多細節見 <a href="https://github.com/tterminal-app/tterminal-sync">伺服器的 GitHub 頁面</a>。</p>
+  <p>資料在裝置上就先加密,伺服器只存得到密文。配對字串裡有解密金鑰,只在自己的裝置之間傳,不要貼到別的地方。另外 iOS 同時只能開一個 VPN,平常有開別的 VPN 的話,同步時記得切到連回家的那一個。更多細節(包含一定要放公網時怎麼加 HTTPS)見 <a href="https://github.com/tterminal-app/tterminal-sync">伺服器的 GitHub 頁面</a>。</p>
 </section>
 
 <section>
