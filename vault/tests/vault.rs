@@ -2,7 +2,7 @@
 
 use serde_json::json;
 use tempfile::TempDir;
-use tterm_vault::{Pairing, VaultStore, WireRecord};
+use tterm_vault::{Pairing, PairingError, VaultStore, WireRecord};
 use uuid::Uuid;
 
 fn open(dir: &TempDir) -> VaultStore {
@@ -76,8 +76,18 @@ fn pairing_roundtrip_and_reject() {
     assert_eq!(Pairing::decode(&wrapped).unwrap(), p, "容忍中間換行(折行)");
     let spaced = format!("{}\r\n {}", &s[..60], &s[60..]);
     assert_eq!(Pairing::decode(&spaced).unwrap(), p, "容忍中間 CRLF + 空格");
-    assert!(Pairing::decode("TTERMSYNC1:!!!").is_err());
-    assert!(Pairing::decode("hello").is_err());
+    // UI 依錯誤型別給提示,型別要對
+    let kind = |s: &str| {
+        let err = Pairing::decode(s).unwrap_err();
+        match err.downcast_ref::<PairingError>() {
+            Some(PairingError::MissingPrefix) => "prefix",
+            Some(PairingError::UnsupportedVersion(_)) => "version",
+            Some(PairingError::Malformed(_)) => "malformed",
+            None => "untyped",
+        }
+    };
+    assert_eq!(kind("TTERMSYNC1:!!!"), "malformed");
+    assert_eq!(kind("hello"), "prefix");
 }
 
 #[test]
@@ -177,6 +187,8 @@ fn lww_merge_and_conflict_copy() {
     let push_a2 = a.build_push().unwrap();
 
     // B 還掛著未推送的修改,拉到 A 的新版 → LWW 由 A 勝,B 的版本變衝突副本
+    // (副本名稱樣板由 UI 依語系給)
+    b.set_conflict_name_template("{name}(衝突副本 {device} @{time})");
     let summary = b.apply_pull(&push_with_seq(&push_a2, 10), 10).unwrap();
     assert_eq!(summary.applied, 1);
     assert_eq!(summary.conflicts, 1);

@@ -10,5 +10,6 @@ pub mod pairing;
 pub mod store;
 
 pub use model::{Record, RecordBody, WireRecord};
-pub use pairing::Pairing;
+pub use crypto::DecryptError;
+pub use pairing::{Pairing, PairingError};
 pub use store::{ApplySummary, JoinSummary, SyncConfig, VaultStore};

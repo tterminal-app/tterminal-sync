@@ -29,9 +29,9 @@ curl http://localhost:8722/v1/health
 
 Then in the app:
 
-1. **Settings → Sync**, enter `http://<your-server>:8722`, tap **Create sync**
+1. **Settings → Sync**, enter `http://<your-server>:8722`, tap **Set up sync**
 2. Tap **Export pairing string** and copy it
-3. On your other device: **Settings → Sync → Paste pairing string**
+3. On your other device: **Settings → Sync → Join with a pairing string**
 
 That's it. Changes sync when the app starts, a couple of seconds after you edit something, and whenever you tap **Sync now**.
 

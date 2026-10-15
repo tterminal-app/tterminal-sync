@@ -75,9 +75,9 @@
   -v tterm-data:/data --restart unless-stopped \
   ghcr.io/tterminal-app/tterminal-sync:latest</code></pre>
   <ol>
-    <li>On your first device: Settings → Sync, enter <code>http://&lt;server&gt;:8722</code> and tap <b>Create sync</b>. With Tailscale, use the server's Tailscale name or its 100.x address; it works both at home and away.</li>
+    <li>On your first device: Settings → Sync, enter <code>http://&lt;server&gt;:8722</code> and tap <b>Set up sync</b>. With Tailscale, use the server's Tailscale name or its 100.x address; it works both at home and away.</li>
     <li>Tap <b>Export pairing string</b> and copy it.</li>
-    <li>On each other device: Settings → Sync → <b>Paste pairing string</b>.</li>
+    <li>On each other device: Settings → Sync → <b>Join with a pairing string</b>.</li>
   </ol>
   <p>Everything is encrypted on the device first, so the server only stores ciphertext. The pairing string contains the decryption key: keep it between your own devices. Also, iOS runs one VPN at a time, so if you normally use a different VPN, switch to the one that reaches home before syncing. More details (including HTTPS, if it really must be on the internet) are on the <a href="https://github.com/tterminal-app/tterminal-sync">server's GitHub page</a>.</p>
 </section>

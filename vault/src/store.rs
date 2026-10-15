@@ -74,25 +74,30 @@ pub struct VaultStore {
     last_sync: Option<SyncConfig>,
     records: HashMap<Uuid, Record>,
     dirty: HashSet<Uuid>,
+    /// 衝突副本的名稱樣板,見 [`VaultStore::set_conflict_name_template`]。
+    conflict_name_template: String,
 }
+
+/// 預設的衝突副本名稱(UI 會換成使用者語系的樣板)。
+const DEFAULT_CONFLICT_NAME_TEMPLATE: &str = "{name} (conflicted copy {device} @{time})";
 
 impl VaultStore {
     /// 開啟(或初始化)vault。第一次會產生 vault key / vault id / device id。
     pub fn open(dir: impl AsRef<Path>) -> Result<Self> {
         let dir = dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).context("建立 vault 目錄失敗")?;
+        std::fs::create_dir_all(&dir).context("failed to create the vault directory")?;
         let key_path = dir.join("vault.key");
         let state_path = dir.join("vault.tv");
 
         if key_path.exists() && state_path.exists() {
             let key = Self::load_key(&key_path)?;
-            let raw = std::fs::read(&state_path).context("讀取 vault.tv 失敗")?;
+            let raw = std::fs::read(&state_path).context("failed to read vault.tv")?;
             if raw.len() < MAGIC.len() || &raw[..MAGIC.len()] != MAGIC {
-                bail!("vault.tv 格式錯誤(magic 不符)");
+                bail!("vault.tv is not a vault file (bad magic)");
             }
             let plain = crypto::open(&key, STATE_AAD, &raw[MAGIC.len()..])?;
             let state: PersistState =
-                serde_json::from_slice(&plain).context("vault 狀態反序列化失敗")?;
+                serde_json::from_slice(&plain).context("failed to parse the vault state")?;
             Ok(Self {
                 dir,
                 key,
@@ -104,6 +109,7 @@ impl VaultStore {
                 last_sync: state.last_sync,
                 records: state.records.into_iter().map(|r| (r.id, r)).collect(),
                 dirty: state.dirty.into_iter().collect(),
+                conflict_name_template: DEFAULT_CONFLICT_NAME_TEMPLATE.to_string(),
             })
         } else {
             let key: [u8; KEY_LEN] = crypto::random_bytes();
@@ -119,6 +125,7 @@ impl VaultStore {
                 last_sync: None,
                 records: HashMap::new(),
                 dirty: HashSet::new(),
+                conflict_name_template: DEFAULT_CONFLICT_NAME_TEMPLATE.to_string(),
             };
             store.save_key(&key_path)?;
             store.save()?;
@@ -127,11 +134,11 @@ impl VaultStore {
     }
 
     fn load_key(path: &Path) -> Result<[u8; KEY_LEN]> {
-        let text = std::fs::read_to_string(path).context("讀取 vault.key 失敗")?;
-        let bytes = STANDARD.decode(text.trim()).context("vault.key 解碼失敗")?;
+        let text = std::fs::read_to_string(path).context("failed to read vault.key")?;
+        let bytes = STANDARD.decode(text.trim()).context("failed to decode vault.key")?;
         bytes
             .try_into()
-            .map_err(|_| anyhow::anyhow!("vault.key 長度錯誤"))
+            .map_err(|_| anyhow::anyhow!("vault.key has the wrong length"))
     }
 
     fn save_key(&self, path: &Path) -> Result<()> {
@@ -224,7 +231,7 @@ impl VaultStore {
         let id = id.unwrap_or_else(Uuid::new_v4);
         if let Some(existing) = self.records.get(&id) {
             if existing.deleted {
-                bail!("record 已刪除");
+                bail!("record has been deleted");
             }
         }
         let record = Record {
@@ -266,11 +273,11 @@ impl VaultStore {
     /// (vault_id + auth hash;由上層負責呼叫 server 的 POST /v1/vaults)。
     pub fn sync_enable(&mut self, server: &str) -> Result<(Uuid, String)> {
         if self.sync.is_some() {
-            bail!("同步已設定;要換 server 請先停用同步");
+            bail!("sync is already set up; turn it off before switching servers");
         }
         let server = server.trim().trim_end_matches('/').to_string();
         if server.is_empty() {
-            bail!("server 位置不可為空");
+            bail!("server address is empty");
         }
         // 之前在同一台 server 啟用過 → 重用舊 token,server 端註冊冪等回 200;
         // 產新 token 會因同 vault id 不同 auth 而 409,把使用者鎖在外面。
@@ -302,20 +309,20 @@ impl VaultStore {
     /// bearer token 的 SHA-256(base64)——server 註冊與驗證用。
     pub fn auth_hash_b64(&self) -> Result<String> {
         let Some(sync) = &self.sync else {
-            bail!("尚未設定同步");
+            bail!("sync is not set up");
         };
-        let token = STANDARD.decode(&sync.token).context("token 解碼失敗")?;
+        let token = STANDARD.decode(&sync.token).context("failed to decode token")?;
         Ok(STANDARD.encode(Sha256::digest(&token)))
     }
 
     pub fn export_pairing(&self) -> Result<String> {
         let Some(sync) = &self.sync else {
-            bail!("尚未設定同步,無法匯出配對字串");
+            bail!("sync is not set up, so there is no pairing string to export");
         };
         let token_vec = STANDARD.decode(&sync.token)?;
         let token: [u8; TOKEN_LEN] = token_vec
             .try_into()
-            .map_err(|_| anyhow::anyhow!("token 長度錯誤"))?;
+            .map_err(|_| anyhow::anyhow!("token has the wrong length"))?;
         Ok(Pairing {
             server: sync.server.clone(),
             vault_id: self.vault_id,
@@ -400,6 +407,12 @@ impl VaultStore {
         self.save()
     }
 
+    /// 衝突副本的名稱樣板:`{name}` 原名、`{device}` 改它的裝置、`{time}`
+    /// 改的時間(unix 秒)。名稱會同步到所有裝置,UI 用建立副本那台的語系。
+    pub fn set_conflict_name_template(&mut self, template: &str) {
+        self.conflict_name_template = template.to_string();
+    }
+
     /// 套用 pull 下來的遠端變更(LWW;雙方都改過時保留衝突副本)。
     pub fn apply_pull(&mut self, incoming: &[WireRecord], next_cursor: u64) -> Result<ApplySummary> {
         let mut summary = ApplySummary::default();
@@ -421,12 +434,12 @@ impl VaultStore {
                 if self.dirty.contains(&wire.id) && !l.deleted {
                     if let Some(body) = &l.body {
                         let mut copy_body = body.clone();
-                        copy_body.name = format!(
-                            "{}(衝突副本 {} @{})",
-                            copy_body.name,
-                            l.device,
-                            l.hlc / 1000
-                        );
+                        // 名稱最後才填:使用者取的名字裡剛好有 {device} 之類也不會被換掉
+                        copy_body.name = self
+                            .conflict_name_template
+                            .replace("{device}", &l.device)
+                            .replace("{time}", &(l.hlc / 1000).to_string())
+                            .replace("{name}", &copy_body.name);
                         let copy = Record {
                             id: Uuid::new_v4(),
                             hlc: next_hlc(&mut self.last_hlc),
@@ -444,7 +457,7 @@ impl VaultStore {
             let body = if wire.deleted {
                 None
             } else {
-                let sealed = STANDARD.decode(&wire.blob).context("blob 解碼失敗")?;
+                let sealed = STANDARD.decode(&wire.blob).context("failed to decode blob")?;
                 let plain =
                     crypto::open(&self.key, wire.id.to_string().as_bytes(), &sealed)?;
                 Some(serde_json::from_slice::<RecordBody>(&plain)?)
@@ -478,8 +491,8 @@ fn hex(bytes: &[u8]) -> String {
 
 fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, data).with_context(|| format!("寫入 {} 失敗", tmp.display()))?;
+    std::fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
     std::fs::rename(&tmp, path)
-        .with_context(|| format!("rename 到 {} 失敗", path.display()))?;
+        .with_context(|| format!("failed to rename to {}", path.display()))?;
     Ok(())
 }
