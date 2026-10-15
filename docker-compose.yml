@@ -1,0 +1,14 @@
+# Plain HTTP on port 8722. Fine on a LAN or behind a VPN.
+# Exposing it to the internet? Use compose.caddy.yml instead (adds TLS).
+services:
+  tterm-sync:
+    image: ghcr.io/tterminal-app/tterminal-sync:latest
+    container_name: tterm-sync
+    ports:
+      - "8722:8722"
+    volumes:
+      - tterm-data:/data
+    restart: unless-stopped
+
+volumes:
+  tterm-data:

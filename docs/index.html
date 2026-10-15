@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tterminal 使用說明</title>
+<meta name="description" content="tterminal:iPhone 與 iPad 上的 SSH 終端機。使用說明、自架同步與常見問題。">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <img src="icon.png" alt="" width="72" height="72">
+  <div>
+    <h1>tterminal</h1>
+    <p>iPhone 與 iPad 上的 SSH 終端機。中文打得順,同步走你自己的伺服器。</p>
+  </div>
+  <nav><a href="en/">English</a></nav>
+</header>
+
+<main>
+<section>
+  <h2>開始使用</h2>
+  <h3>新增主機</h3>
+  <ol>
+    <li>首頁右上角點伺服器圖示,進到 <b>Vaults</b>。</li>
+    <li>在 Hosts 分頁按 <b>新增 Host</b>,填名稱、位址、Port、使用者。</li>
+    <li>認證方式選 <b>密碼</b> 或 <b>SSH 金鑰</b>。選「無」的話,連線時再在終端機裡輸入。</li>
+    <li>儲存後回首頁,點主機就會連線。</li>
+  </ol>
+  <p>常用的主機可以在 Vaults 裡按星號釘選,首頁會排在最上面。</p>
+
+  <h3>主機指紋</h3>
+  <p>第一次連到一台主機時,app 會記下它的指紋。之後如果指紋變了,連線會直接被擋下來,因為這可能代表有人在中間攔截。</p>
+  <p>如果是你自己重灌了那台主機,目前的做法是在 Vaults 把它刪掉再重新新增。</p>
+
+  <h3>SSH 金鑰</h3>
+  <ol>
+    <li>Vaults → <b>Keys</b> → <b>新增 Key</b>,貼上 OpenSSH 或 PEM 格式的私鑰。有 passphrase 就一起填。</li>
+    <li>按 <b>複製公鑰</b>,貼到伺服器的 <code>~/.ssh/authorized_keys</code>。</li>
+    <li>編輯主機,認證方式改成 SSH 金鑰並選這把。</li>
+  </ol>
+  <p>目前還不能在 app 裡直接產生金鑰,可以先在電腦上用 <code>ssh-keygen -t ed25519</code> 產生再貼進來。</p>
+</section>
+
+<section>
+  <h2>在終端機裡</h2>
+  <ul>
+    <li><b>功能鍵列</b>:鍵盤上方那排有 esc、ctrl、tab、方向鍵。<b>ctrl</b> 點一下會亮起,下一個輸入的字就會變成 Ctrl 組合,用完自動放開。<b>^C</b>、<b>^D</b> 是一鍵直送。</li>
+    <li><b>捲動</b>:單指上下拖曳可以看之前的輸出。</li>
+    <li><b>方向鍵搖桿</b>:長按終端機不放再拖曳,就會一直送方向鍵,拖得越遠越快。在 vim、less 裡很好用。</li>
+    <li><b>中文輸入</b>:注音、倉頡、拼音都可以直接打。組字會顯示在游標的位置,選好字才送出去。</li>
+    <li><b>字體大小</b>:首頁右上角的齒輪 → 設定 → 終端機字體大小。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>切到別的 app 時</h2>
+  <p>切去回個訊息再回來,連線多半還在。app 在背景時,動態島和鎖定畫面會顯示目前有幾條連線。</p>
+  <p>iOS 只給 app 有限的背景時間,離開太久系統還是會把 app 暫停,連線就會中斷。回來後在首頁再點一次主機重新連線即可。需要長時間跑的工作,建議在伺服器上開 tmux,斷線重連後 <code>tmux attach</code> 就能接回去。</p>
+</section>
+
+<section>
+  <h2>iPad 與 iPhone Duo</h2>
+  <p>螢幕夠寬的時候(iPad、iPhone Duo 展開),畫面會分成兩欄:左邊連線列表,右邊終端機,左邊點一下就能切換連線。想讓終端機用滿整個畫面,按左欄右上角的按鈕收起來。</p>
+  <p>iPhone Duo 半摺時,版面會對齊摺痕:直立半開是左右兩欄,平放半開則是終端機在上半、功能鍵和鍵盤在下半。</p>
+</section>
+
+<section>
+  <h2>多台裝置同步</h2>
+  <p>tterminal 不用註冊帳號。想在多台裝置之間同步主機和金鑰,需要自己架一台同步伺服器,有 Docker 的話一行指令就好:</p>
+  <pre><code>docker run -d --name tterm-sync -p 8722:8722 \
+  -v tterm-data:/data --restart unless-stopped \
+  ghcr.io/tterminal-app/tterminal-sync:latest</code></pre>
+  <ol>
+    <li>第一台裝置:設定 → 同步,輸入 <code>http://&lt;伺服器位址&gt;:8722</code>,按 <b>建立同步</b>。</li>
+    <li>按 <b>匯出配對字串</b> 並複製。</li>
+    <li>其他裝置:設定 → 同步 → <b>貼上配對字串加入</b>。</li>
+  </ol>
+  <p>資料在裝置上就先加密,伺服器只存得到密文。配對字串裡有解密金鑰,只在自己的裝置之間傳,不要貼到別的地方。要放到公網的話請加上 HTTPS,做法和更多細節見 <a href="https://github.com/tterminal-app/tterminal-sync">伺服器的 GitHub 頁面</a>。</p>
+</section>
+
+<section>
+  <h2>常見問題</h2>
+  <details>
+    <summary>連不到家裡區網的主機</summary>
+    <p>到 iPhone 的 <b>設定 → 隱私權與安全性 → 區域網路</b>,確認 tterminal 有打開。第一次連區網主機時系統會詢問,如果當時按了不允許,就要從這裡打開。</p>
+  </details>
+  <details>
+    <summary>連線時出現主機指紋不符</summary>
+    <p>代表這台主機的身分跟上次不一樣。如果是你自己重灌或換了主機,把它在 Vaults 刪掉再重新新增即可。如果你沒有動過主機,請先別連,確認一下網路環境。</p>
+  </details>
+  <details>
+    <summary>同步失敗</summary>
+    <p>先確認手機連得到伺服器:用 Safari 開 <code>http://&lt;伺服器位址&gt;:8722/v1/health</code>,應該會看到 <code>{"ok":true,...}</code>。區網的伺服器也需要上面提到的區域網路權限。</p>
+  </details>
+  <details>
+    <summary>可以在手機上開本機的 shell 嗎?</summary>
+    <p>不行。iOS 不允許 app 執行其他程式,所以 tterminal 在 iPhone 和 iPad 上只做 SSH 連線。</p>
+  </details>
+  <details>
+    <summary>會收集我的資料嗎?</summary>
+    <p>不會。tterminal 沒有帳號、沒有分析工具、沒有廣告。主機和金鑰只存在你的裝置上,開了同步也只會送到你自己的伺服器,而且是加密過的。詳見 <a href="privacy.html">隱私權政策</a>。</p>
+  </details>
+</section>
+
+<section>
+  <h2>回報問題</h2>
+  <p>遇到 bug 或想要什麼功能,請到 <a href="https://github.com/tterminal-app/tterminal-sync/issues">GitHub Issues</a> 開一則。附上 iOS 版本、機型和怎麼重現,會比較快找到原因。</p>
+</section>
+</main>
+
+<footer>
+  <a href="privacy.html">隱私權政策</a> · <a href="https://github.com/tterminal-app/tterminal-sync">同步伺服器原始碼</a> · © 2026 tterminal
+</footer>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tterminal Help</title>
+<meta name="description" content="tterminal, an SSH terminal for iPhone and iPad. Getting started, self-hosted sync and FAQ.">
+<link rel="icon" href="../icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header>
+  <img src="../icon.png" alt="" width="72" height="72">
+  <div>
+    <h1>tterminal</h1>
+    <p>An SSH terminal for iPhone and iPad. Input methods that behave, sync through your own server.</p>
+  </div>
+  <nav><a href="../">中文</a></nav>
+</header>
+
+<main>
+<section>
+  <h2>Getting started</h2>
+  <h3>Add a host</h3>
+  <ol>
+    <li>Tap the server icon in the top-right corner to open <b>Vaults</b>.</li>
+    <li>On the Hosts tab, tap <b>Add Host</b> and fill in a name, address, port and username.</li>
+    <li>Pick <b>Password</b> or <b>SSH key</b> for authentication. Choose None if you'd rather type it in the terminal when connecting.</li>
+    <li>Save, go back, and tap the host to connect.</li>
+  </ol>
+  <p>Star the hosts you use most and they'll stay at the top of the list.</p>
+
+  <h3>Host fingerprints</h3>
+  <p>The first time you connect to a host, tterminal remembers its fingerprint. If it ever changes, the connection is refused, since that can mean someone is sitting in the middle.</p>
+  <p>If you reinstalled the server yourself, delete the host in Vaults and add it again.</p>
+
+  <h3>SSH keys</h3>
+  <ol>
+    <li>Vaults → <b>Keys</b> → <b>Add Key</b>, and paste a private key in OpenSSH or PEM format, plus its passphrase if it has one.</li>
+    <li>Tap <b>Copy public key</b> and add it to <code>~/.ssh/authorized_keys</code> on the server.</li>
+    <li>Edit the host, switch authentication to SSH key and pick this one.</li>
+  </ol>
+  <p>Generating keys inside the app isn't supported yet. Create one on your computer with <code>ssh-keygen -t ed25519</code> and paste it in.</p>
+</section>
+
+<section>
+  <h2>In the terminal</h2>
+  <ul>
+    <li><b>Extra keys</b>: the row above the keyboard has esc, ctrl, tab and arrows. Tap <b>ctrl</b> once and it lights up; the next key you type is sent with Ctrl, then it releases. <b>^C</b> and <b>^D</b> send right away.</li>
+    <li><b>Scrolling</b>: drag with one finger to see earlier output.</li>
+    <li><b>Arrow joystick</b>: long-press the terminal and drag. It keeps sending arrow keys, faster the further you drag. Great in vim and less.</li>
+    <li><b>Input methods</b>: Chinese, Japanese and other IMEs work directly. Composition appears at the cursor and is only sent once you choose a candidate.</li>
+    <li><b>Font size</b>: gear icon on the home screen → Settings → Terminal font size.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>When you switch apps</h2>
+  <p>Pop out to answer a message and your session is usually still there when you come back. While tterminal is in the background, the Dynamic Island and Lock Screen show how many connections are open.</p>
+  <p>iOS only gives apps limited background time, so after a while the system suspends the app and connections drop. Tap the host again to reconnect. For long-running work, run tmux on the server and <code>tmux attach</code> after reconnecting.</p>
+</section>
+
+<section>
+  <h2>iPad and iPhone Duo</h2>
+  <p>On wide screens (iPad, an unfolded iPhone Duo) you get two columns: connections on the left, terminal on the right. Tap a connection on the left to switch. Want the terminal full width? Collapse the list with the button at the top of the left column.</p>
+  <p>Half-fold the iPhone Duo and the layout follows the hinge: side by side when it's standing like a book, terminal on top and keys on the bottom when it's flat like a laptop.</p>
+</section>
+
+<section>
+  <h2>Sync between devices</h2>
+  <p>There's no account. To sync hosts and keys across devices, run your own sync server. With Docker it's one command:</p>
+  <pre><code>docker run -d --name tterm-sync -p 8722:8722 \
+  -v tterm-data:/data --restart unless-stopped \
+  ghcr.io/tterminal-app/tterminal-sync:latest</code></pre>
+  <ol>
+    <li>On your first device: Settings → Sync, enter <code>http://&lt;server&gt;:8722</code> and tap <b>Create sync</b>.</li>
+    <li>Tap <b>Export pairing string</b> and copy it.</li>
+    <li>On each other device: Settings → Sync → <b>Paste pairing string</b>.</li>
+  </ol>
+  <p>Everything is encrypted on the device first, so the server only stores ciphertext. The pairing string contains the decryption key: keep it between your own devices. If the server is reachable from the internet, put HTTPS in front of it. Details are on the <a href="https://github.com/tterminal-app/tterminal-sync">server's GitHub page</a>.</p>
+</section>
+
+<section>
+  <h2>FAQ</h2>
+  <details>
+    <summary>I can't reach a host on my home network</summary>
+    <p>Go to <b>Settings → Privacy &amp; Security → Local Network</b> on your iPhone and make sure tterminal is on. iOS asks the first time you connect to a local host; if you tapped Don't Allow, turn it on here.</p>
+  </details>
+  <details>
+    <summary>The host fingerprint doesn't match</summary>
+    <p>The host is presenting a different identity than last time. If you reinstalled or replaced it, delete it in Vaults and add it again. If you didn't change anything, don't connect until you've checked your network.</p>
+  </details>
+  <details>
+    <summary>Sync fails</summary>
+    <p>First check the phone can reach the server: open <code>http://&lt;server&gt;:8722/v1/health</code> in Safari and you should see <code>{"ok":true,...}</code>. A server on your LAN also needs the Local Network permission above.</p>
+  </details>
+  <details>
+    <summary>Can I open a local shell on the device?</summary>
+    <p>No. iOS doesn't let apps run other programs, so on iPhone and iPad tterminal is an SSH client only.</p>
+  </details>
+  <details>
+    <summary>Do you collect any data?</summary>
+    <p>No. There's no account, no analytics and no ads. Hosts and keys stay on your device, and with sync on they only go, encrypted, to your own server. See the <a href="../privacy.html#en">privacy policy</a>.</p>
+  </details>
+</section>
+
+<section>
+  <h2>Report a problem</h2>
+  <p>Found a bug or want a feature? Open an issue on <a href="https://github.com/tterminal-app/tterminal-sync/issues">GitHub</a>. Your iOS version, device model and steps to reproduce help a lot.</p>
+</section>
+</main>
+
+<footer>
+  <a href="../privacy.html#en">Privacy policy</a> · <a href="https://github.com/tterminal-app/tterminal-sync">Sync server source</a> · © 2026 tterminal
+</footer>
+</body>
+</html>

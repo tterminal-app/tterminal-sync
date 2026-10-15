@@ -1,0 +1,29 @@
+# Sync server behind Caddy with automatic HTTPS (Let's Encrypt).
+#
+#   1. Point a DNS record (e.g. sync.example.com) at this machine
+#   2. Put that name in Caddyfile
+#   3. docker compose -f compose.caddy.yml up -d
+#
+# Ports 80 and 443 must be reachable from the internet for the certificate.
+services:
+  tterm-sync:
+    image: ghcr.io/tterminal-app/tterminal-sync:latest
+    volumes:
+      - tterm-data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - tterm-sync
+    restart: unless-stopped
+
+volumes:
+  tterm-data:
+  caddy-data:
