@@ -1,5 +1,8 @@
 # tterminal-sync
 
+[![ci](https://github.com/tterminal-app/tterminal-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/tterminal-app/tterminal-sync/actions/workflows/ci.yml)
+[![docker](https://github.com/tterminal-app/tterminal-sync/actions/workflows/docker.yml/badge.svg)](https://github.com/tterminal-app/tterminal-sync/pkgs/container/tterminal-sync)
+
 Self-hosted sync server for [tterminal](https://tterminal-app.github.io/tterminal-sync/), the SSH terminal for iPhone and iPad.
 
 It keeps your hosts and SSH keys in sync across devices without an account and without trusting the server. Everything is encrypted on your device before it's sent; the server only ever stores ciphertext and the bare minimum it needs to order updates.
