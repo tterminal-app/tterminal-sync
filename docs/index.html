@@ -32,15 +32,16 @@
 
   <h3>主機指紋</h3>
   <p>第一次連到一台主機時,app 會記下它的指紋。之後如果指紋變了,連線會直接被擋下來,因為這可能代表有人在中間攔截。</p>
-  <p>如果是你自己重灌了那台主機,目前的做法是在 Vaults 把它刪掉再重新新增。</p>
+  <p>這時畫面會並列「記住的指紋」和「這次收到的指紋」。如果是你自己重灌了主機或換了主機金鑰,先在伺服器上執行 <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>,跟「這次收到的指紋」逐字核對。一致的話按 <b>我確認主機換過了,改用新指紋</b>,勾選已核對後就會改用新指紋重新連線,不用刪掉主機。</p>
+  <p>也可以在 Vaults 編輯主機,在「主機指紋」按 <b>清除</b> 再儲存;改了位址或 Port 時會自動清除。清除後,下次連線會重新記住。</p>
 
   <h3>SSH 金鑰</h3>
   <ol>
-    <li>Vaults → <b>Keys</b> → <b>新增 Key</b>,貼上 OpenSSH 或 PEM 格式的私鑰。有 passphrase 就一起填。</li>
-    <li>按 <b>複製公鑰</b>,貼到伺服器的 <code>~/.ssh/authorized_keys</code>。</li>
+    <li>Vaults → <b>Keys</b> → <b>產生金鑰</b>。類型用預設的 Ed25519 就好,要連不支援 Ed25519 的舊伺服器才選 RSA。passphrase 可以留空。</li>
+    <li>產生完會直接顯示公鑰,按 <b>複製公鑰</b>,加到伺服器的 <code>~/.ssh/authorized_keys</code>。還沒有其他方法登入那台主機的話,可以先用密碼連上,在終端機裡把公鑰加進去。</li>
     <li>編輯主機,認證方式改成 SSH 金鑰並選這把。</li>
   </ol>
-  <p>目前還不能在 app 裡直接產生金鑰,可以先在電腦上用 <code>ssh-keygen -t ed25519</code> 產生再貼進來。</p>
+  <p>已經有金鑰的話,改按 <b>新增 Key</b>,貼上 OpenSSH 或 PEM 格式的私鑰,有 passphrase 就一起填。之後要再拿公鑰,在 Keys 列表按複製鈕即可。</p>
 </section>
 
 <section>
@@ -90,7 +91,7 @@
   </details>
   <details>
     <summary>連線時出現主機指紋不符</summary>
-    <p>代表這台主機的身分跟上次不一樣。如果是你自己重灌或換了主機,把它在 Vaults 刪掉再重新新增即可。如果你沒有動過主機,請先別連,確認一下網路環境。</p>
+    <p>代表這台主機的身分跟上次不一樣。如果你沒有動過主機,請先別連,確認一下網路環境(例如是不是連到了陌生的 Wi-Fi)。如果是你自己重灌或換了主機,照上面「主機指紋」的方法核對新指紋後改用即可,不用刪掉主機。</p>
   </details>
   <details>
     <summary>同步失敗</summary>
@@ -99,6 +100,14 @@
   <details>
     <summary>可以在手機上開本機的 shell 嗎?</summary>
     <p>不行。iOS 不允許 app 執行其他程式,所以 tterminal 在 iPhone 和 iPad 上只做 SSH 連線。</p>
+  </details>
+  <details>
+    <summary>試用結束後會怎樣?</summary>
+    <p>主機、金鑰、Vaults 和同步都會留著,照樣可以看、可以改,也會繼續同步;只有開新的 SSH 連線需要先解鎖。解鎖是一次性購買,包含之後所有 1.x 更新。沒有訂閱,試用結束也不會自動扣款。</p>
+  </details>
+  <details>
+    <summary>換手機或重裝之後,怎麼恢復購買?</summary>
+    <p>到 <b>設定 → 試用與解鎖 → 恢復購買</b>,用當初購買的那個 Apple 帳號就好,解鎖畫面上也有同一個按鈕。試用的起算日同樣跟著 Apple 帳號,重裝或換手機不會重新計算。</p>
   </details>
   <details>
     <summary>會收集我的資料嗎?</summary>

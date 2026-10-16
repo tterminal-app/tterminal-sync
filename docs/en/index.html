@@ -32,15 +32,16 @@
 
   <h3>Host fingerprints</h3>
   <p>The first time you connect to a host, tterminal remembers its fingerprint. If it ever changes, the connection is refused, since that can mean someone is sitting in the middle.</p>
-  <p>If you reinstalled the server yourself, delete the host in Vaults and add it again.</p>
+  <p>The error screen then shows the remembered fingerprint next to the one presented this time. If you reinstalled the server or replaced its host key yourself, run <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code> on the server and compare it with the new fingerprint. If they match exactly, tap <b>I've confirmed the host changed. Use the new fingerprint…</b>, tick the box to say you've checked it, and tterminal switches to the new fingerprint and reconnects. No need to delete the host.</p>
+  <p>You can also edit the host in Vaults and tap <b>Clear</b> under “Host key fingerprint”, then save. Changing the address or port clears it automatically. The next connection remembers the new one.</p>
 
   <h3>SSH keys</h3>
   <ol>
-    <li>Vaults → <b>Keys</b> → <b>Add Key</b>, and paste a private key in OpenSSH or PEM format, plus its passphrase if it has one.</li>
-    <li>Tap <b>Copy public key</b> and add it to <code>~/.ssh/authorized_keys</code> on the server.</li>
+    <li>Vaults → <b>Keys</b> → <b>Generate Key</b>. The default type, Ed25519, is the right choice unless the server is too old to support it; then pick RSA. The passphrase can be left empty.</li>
+    <li>The public key is shown right away. Tap <b>Copy public key</b> and add it to <code>~/.ssh/authorized_keys</code> on the server. If you have no other way to sign in yet, connect with a password first and add it from the terminal.</li>
     <li>Edit the host, switch authentication to SSH key and pick this one.</li>
   </ol>
-  <p>Generating keys inside the app isn't supported yet. Create one on your computer with <code>ssh-keygen -t ed25519</code> and paste it in.</p>
+  <p>Already have a key? Tap <b>Add Key</b> instead and paste the private key in OpenSSH or PEM format, plus its passphrase if it has one. To get the public key again later, tap the copy button next to the key in the Keys list.</p>
 </section>
 
 <section>
@@ -90,7 +91,7 @@
   </details>
   <details>
     <summary>The host fingerprint doesn't match</summary>
-    <p>The host is presenting a different identity than last time. If you reinstalled or replaced it, delete it in Vaults and add it again. If you didn't change anything, don't connect until you've checked your network.</p>
+    <p>The host is presenting a different identity than last time. If you didn't change anything, don't connect until you've checked your network (are you on an unfamiliar Wi-Fi?). If you reinstalled or replaced it, check the new fingerprint as described under “Host fingerprints” above and switch to it. No need to delete the host.</p>
   </details>
   <details>
     <summary>Sync fails</summary>
@@ -99,6 +100,14 @@
   <details>
     <summary>Can I open a local shell on the device?</summary>
     <p>No. iOS doesn't let apps run other programs, so on iPhone and iPad tterminal is an SSH client only.</p>
+  </details>
+  <details>
+    <summary>What happens when the trial ends?</summary>
+    <p>Your hosts, keys, Vaults and sync all stay, and you can keep viewing, editing and syncing them. Only opening a new SSH connection needs an unlock. Unlocking is a one-time purchase that includes all future 1.x updates. There's no subscription, and nothing is charged when the trial ends.</p>
+  </details>
+  <details>
+    <summary>How do I restore my purchase on a new device or after reinstalling?</summary>
+    <p>Go to <b>Settings → Trial &amp; unlock → Restore purchases</b> and use the Apple Account you bought it with. The unlock screen has the same button. The trial is tied to your Apple Account too, so reinstalling or switching devices doesn't restart it.</p>
   </details>
   <details>
     <summary>Do you collect any data?</summary>
