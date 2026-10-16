@@ -1,10 +1,13 @@
 //! VaultStore:本地儲存、CRUD、dirty 追蹤、同步 payload 與合併。
 //!
 //! 檔案佈局(dir 內):
-//!   vault.key  base64 的 32B vault key(之後移入 OS keychain,格式不變)
 //!   vault.tv   b"TTV1" + seal(key, aad="vault-state", json(PersistState))
+//!   vault.key  檔案模式的 vault key(base64);Keychain 模式下不存在
+//!              (舊版留下的會在開啟時搬進 key store,見 open_with_key_store)
+//!   vault.tv.unreadable-<ms>  沒有任何 key 解得開時移到旁邊的原檔(只搬不刪)
 //!
-//! 寫入一律原子(tmp + rename),斷電不會留下半份檔案。
+//! vault key 由 KeyStore 保管(keystore.rs)。寫入一律原子(tmp + rename),
+//! 斷電不會留下半份檔案。
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -17,11 +20,14 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::crypto::{self, KEY_LEN};
+use crate::keystore::{FileKeyStore, KeyStore, VaultKey};
 use crate::model::{next_hlc, observe_hlc, Record, RecordBody, WireRecord};
 use crate::pairing::{Pairing, TOKEN_LEN};
 
 const MAGIC: &[u8; 4] = b"TTV1";
 const STATE_AAD: &[u8] = b"vault-state";
+const KEY_FILE: &str = "vault.key";
+const STATE_FILE: &str = "vault.tv";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
@@ -30,7 +36,7 @@ pub struct SyncConfig {
     pub token: String, // base64
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct PersistState {
     vault_id: Uuid,
     device_id: String,
@@ -74,6 +80,9 @@ pub struct VaultStore {
     last_sync: Option<SyncConfig>,
     records: HashMap<Uuid, Record>,
     dirty: HashSet<Uuid>,
+    key_store: Box<dyn KeyStore>,
+    /// 這次開啟時因為沒有 key 解得開而移到旁邊的舊 vault.tv。
+    set_aside: Option<PathBuf>,
     /// 衝突副本的名稱樣板,見 [`VaultStore::set_conflict_name_template`]。
     conflict_name_template: String,
 }
@@ -82,71 +91,122 @@ pub struct VaultStore {
 const DEFAULT_CONFLICT_NAME_TEMPLATE: &str = "{name} (conflicted copy {device} @{time})";
 
 impl VaultStore {
-    /// 開啟(或初始化)vault。第一次會產生 vault key / vault id / device id。
+    /// 檔案模式:vault key 存在 dir/vault.key(Windows/Linux、測試)。
+    /// 第一次開啟會產生 vault key / vault id / device id。
     pub fn open(dir: impl AsRef<Path>) -> Result<Self> {
-        let dir = dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).context("failed to create the vault directory")?;
-        let key_path = dir.join("vault.key");
-        let state_path = dir.join("vault.tv");
+        let dir = dir.as_ref();
+        let key_store = Box::new(FileKeyStore::new(dir.join(KEY_FILE)));
+        Self::open_inner(dir, key_store, false)
+    }
 
-        if key_path.exists() && state_path.exists() {
-            let key = Self::load_key(&key_path)?;
+    /// vault key 交給外部的 key store 保管(Apple Keychain 等),dir 裡只剩 vault.tv。
+    ///
+    /// 舊版留在 dir 的 vault.key 會搬進 key store:寫進去、讀回來確認是同一把之後
+    /// 才刪檔。寫不進去就照舊用檔案開啟,下次開啟再搬——key store 出問題時
+    /// 既有資料照樣打得開,也不會有哪一步把唯一一份 key 弄丟。
+    pub fn open_with_key_store(dir: impl AsRef<Path>, key_store: Box<dyn KeyStore>) -> Result<Self> {
+        Self::open_inner(dir.as_ref(), key_store, true)
+    }
+
+    fn open_inner(dir: &Path, key_store: Box<dyn KeyStore>, migrate_legacy: bool) -> Result<Self> {
+        std::fs::create_dir_all(dir).context("failed to create the vault directory")?;
+        let legacy = migrate_legacy.then(|| FileKeyStore::new(dir.join(KEY_FILE)));
+        // 讀不到(鎖定、拒絕存取)就到此為止:當成「沒有 key」會把現有 vault 移開
+        let stored = key_store.load().context("failed to read the vault key")?;
+        let state_path = dir.join(STATE_FILE);
+        let mut set_aside = None;
+
+        if state_path.exists() {
             let raw = std::fs::read(&state_path).context("failed to read vault.tv")?;
-            if raw.len() < MAGIC.len() || &raw[..MAGIC.len()] != MAGIC {
-                bail!("vault.tv is not a vault file (bad magic)");
+            if let Some((key, state)) = open_state(&raw, &stored)? {
+                if stored.len() > 1 {
+                    // 換 key 途中斷掉:只留解得開的那把(失敗無妨,下次開啟再收)
+                    let _ = key_store.store(&[key]);
+                }
+                if let Some(legacy) = &legacy {
+                    // 上次搬完 key 還沒刪檔就中斷了
+                    retire_legacy_key(legacy, key_store.as_ref());
+                }
+                return Ok(Self::from_state(dir, key, state, key_store, None));
             }
-            let plain = crypto::open(&key, STATE_AAD, &raw[MAGIC.len()..])?;
-            let state: PersistState =
-                serde_json::from_slice(&plain).context("failed to parse the vault state")?;
-            Ok(Self {
-                dir,
-                key,
-                vault_id: state.vault_id,
-                device_id: state.device_id,
-                last_hlc: state.last_hlc,
-                cursor: state.cursor,
-                sync: state.sync,
-                last_sync: state.last_sync,
-                records: state.records.into_iter().map(|r| (r.id, r)).collect(),
-                dirty: state.dirty.into_iter().collect(),
-                conflict_name_template: DEFAULT_CONFLICT_NAME_TEMPLATE.to_string(),
-            })
-        } else {
-            let key: [u8; KEY_LEN] = crypto::random_bytes();
-            let device: [u8; 4] = crypto::random_bytes();
-            let store = Self {
-                dir,
-                key,
-                vault_id: Uuid::new_v4(),
-                device_id: hex(&device),
-                last_hlc: 0,
-                cursor: 0,
-                sync: None,
-                last_sync: None,
-                records: HashMap::new(),
-                dirty: HashSet::new(),
-                conflict_name_template: DEFAULT_CONFLICT_NAME_TEMPLATE.to_string(),
-            };
-            store.save_key(&key_path)?;
-            store.save()?;
-            Ok(store)
+            if let Some(legacy) = &legacy {
+                // 檔案讀不到就不能斷定解不開,不往下走到「移開」
+                let legacy_keys = legacy.load()?;
+                if let Some((key, state)) = open_state(&raw, &legacy_keys)? {
+                    if key_store.store(&[key]).is_ok() {
+                        retire_legacy_key(legacy, key_store.as_ref());
+                    }
+                    return Ok(Self::from_state(dir, key, state, key_store, None));
+                }
+            }
+            // 沒有任何 key 解得開(例:未加密備份還原到另一台裝置,Keychain 沒跟過來)。
+            // 原檔移到旁邊保留、開新 vault:卡在打不開的話,連重新配對拿回同步資料都做不到。
+            let aside = dir.join(format!("{STATE_FILE}.unreadable-{}", now_ms()));
+            std::fs::rename(&state_path, &aside)
+                .with_context(|| format!("vault.tv could not be opened, and moving it to {} failed", aside.display()))?;
+            set_aside = Some(aside);
+        }
+
+        // 新 vault:沿用 key store 既有的 key(例:iOS 重裝 app,Keychain 還留著),
+        // 其次是舊版 vault.key,都沒有才產生新的。
+        let legacy_key = legacy
+            .as_ref()
+            .and_then(|l| l.load().ok())
+            .and_then(|keys| keys.first().copied());
+        let key = stored
+            .first()
+            .copied()
+            .or(legacy_key)
+            .unwrap_or_else(crypto::random_bytes);
+        if stored != [key] {
+            // key 存不進去就不建 vault:寫出去的 vault.tv 會沒有 key 解得開
+            key_store.store(&[key]).context("failed to store the vault key")?;
+        }
+        let device: [u8; 4] = crypto::random_bytes();
+        let state = PersistState {
+            vault_id: Uuid::new_v4(),
+            device_id: hex(&device),
+            last_hlc: 0,
+            cursor: 0,
+            sync: None,
+            last_sync: None,
+            records: Vec::new(),
+            dirty: Vec::new(),
+        };
+        let store = Self::from_state(dir, key, state, key_store, set_aside);
+        store.save()?;
+        if let Some(legacy) = &legacy {
+            retire_legacy_key(legacy, store.key_store.as_ref());
+        }
+        Ok(store)
+    }
+
+    fn from_state(
+        dir: &Path,
+        key: VaultKey,
+        state: PersistState,
+        key_store: Box<dyn KeyStore>,
+        set_aside: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            dir: dir.to_path_buf(),
+            key,
+            vault_id: state.vault_id,
+            device_id: state.device_id,
+            last_hlc: state.last_hlc,
+            cursor: state.cursor,
+            sync: state.sync,
+            last_sync: state.last_sync,
+            records: state.records.into_iter().map(|r| (r.id, r)).collect(),
+            dirty: state.dirty.into_iter().collect(),
+            key_store,
+            set_aside,
+            conflict_name_template: DEFAULT_CONFLICT_NAME_TEMPLATE.to_string(),
         }
     }
 
-    fn load_key(path: &Path) -> Result<[u8; KEY_LEN]> {
-        let text = std::fs::read_to_string(path).context("failed to read vault.key")?;
-        let bytes = STANDARD.decode(text.trim()).context("failed to decode vault.key")?;
-        bytes
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("vault.key has the wrong length"))
-    }
-
-    fn save_key(&self, path: &Path) -> Result<()> {
-        atomic_write(path, STANDARD.encode(self.key).as_bytes())
-    }
-
-    pub fn save(&self) -> Result<()> {
-        let state = PersistState {
+    fn persist_state(&self) -> PersistState {
+        PersistState {
             vault_id: self.vault_id,
             device_id: self.device_id.clone(),
             last_hlc: self.last_hlc,
@@ -155,13 +215,27 @@ impl VaultStore {
             last_sync: self.last_sync.clone(),
             records: self.records.values().cloned().collect(),
             dirty: self.dirty.iter().copied().collect(),
-        };
-        let plain = serde_json::to_vec(&state)?;
+        }
+    }
+
+    fn restore(&mut self, state: PersistState) {
+        self.vault_id = state.vault_id;
+        self.device_id = state.device_id;
+        self.last_hlc = state.last_hlc;
+        self.cursor = state.cursor;
+        self.sync = state.sync;
+        self.last_sync = state.last_sync;
+        self.records = state.records.into_iter().map(|r| (r.id, r)).collect();
+        self.dirty = state.dirty.into_iter().collect();
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let plain = serde_json::to_vec(&self.persist_state())?;
         let sealed = crypto::seal(&self.key, STATE_AAD, &plain)?;
         let mut out = Vec::with_capacity(MAGIC.len() + sealed.len());
         out.extend_from_slice(MAGIC);
         out.extend_from_slice(&sealed);
-        atomic_write(&self.dir.join("vault.tv"), &out)
+        atomic_write(&self.dir.join(STATE_FILE), &out)
     }
 
     // ---- 查詢 ----
@@ -190,6 +264,14 @@ impl VaultStore {
         self.dirty.len()
     }
 
+    /// 這次開啟時解不開、移到旁邊的舊 vault.tv 檔名(UI 用來提示使用者)。
+    pub fn set_aside_name(&self) -> Option<String> {
+        self.set_aside
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+    }
+
     /// UI snapshot(明文;不含 key/token)。
     pub fn snapshot_json(&self) -> serde_json::Value {
         let mut list: Vec<&Record> = self
@@ -207,6 +289,7 @@ impl VaultStore {
             "deviceId": self.device_id,
             "dirty": self.dirty.len(),
             "sync": self.sync.as_ref().map(|s| serde_json::json!({ "server": s.server })),
+            "setAside": self.set_aside_name(),
             "records": list.iter().map(|r| {
                 let body = r.body.as_ref().expect("非 tombstone 必有 body");
                 serde_json::json!({
@@ -334,8 +417,20 @@ impl VaultStore {
 
     /// 貼上配對字串加入既有 vault:採用其身分(server/vault/token/key),
     /// 本地既有 records 換新 id、標 dirty 併入(兩邊資料合流,不丟任何一邊)。
+    ///
+    /// 換 key 的順序:key store 先收「新、舊」兩把 → 用新 key 寫 vault.tv
+    /// (原子 rename,真正的切換點)→ key store 只留新的。任何一步中斷,
+    /// key store 裡都有一把解得開磁碟上的 vault.tv,下次開啟自動收尾。
     pub fn import_pairing(&mut self, s: &str) -> Result<JoinSummary> {
         let pairing = Pairing::decode(s)?;
+        let old_key = self.key;
+        let rotating = pairing.key != old_key;
+        if rotating {
+            self.key_store
+                .store(&[pairing.key, old_key])
+                .context("failed to store the vault key")?;
+        }
+        let before = self.persist_state();
         let carried: Vec<Record> = self
             .records
             .values()
@@ -360,8 +455,16 @@ impl VaultStore {
             self.records.insert(r.id, r);
         }
         let carried_count = self.dirty.len();
-        self.save_key(&self.dir.join("vault.key"))?;
-        self.save()?;
+        if let Err(e) = self.save() {
+            // vault.tv 還是舊 key 封的那份;記憶體也退回去,key store 裡新舊都在
+            self.key = old_key;
+            self.restore(before);
+            return Err(e);
+        }
+        if rotating {
+            // 失敗無妨:兩把都在,下次開啟會只留解得開的那把
+            let _ = self.key_store.store(&[self.key]);
+        }
         Ok(JoinSummary {
             server: pairing.server,
             vault_id: pairing.vault_id,
@@ -485,11 +588,45 @@ impl VaultStore {
     }
 }
 
+/// 依序用每把 key 試開 vault.tv。`Ok(None)` = 都解不開;格式錯誤(magic 不符、
+/// 解開後不是合法狀態)與 key 無關,直接回 Err,不讓呼叫端把檔案移開。
+fn open_state(raw: &[u8], keys: &[VaultKey]) -> Result<Option<(VaultKey, PersistState)>> {
+    if raw.len() < MAGIC.len() || &raw[..MAGIC.len()] != MAGIC {
+        bail!("vault.tv is not a vault file (bad magic)");
+    }
+    for key in keys {
+        let Ok(plain) = crypto::open(key, STATE_AAD, &raw[MAGIC.len()..]) else {
+            continue;
+        };
+        let state = serde_json::from_slice(&plain).context("failed to parse the vault state")?;
+        return Ok(Some((*key, state)));
+    }
+    Ok(None)
+}
+
+/// 舊版 vault.key:key store 讀回來確實有同一把才刪。讀不到、對不上都不動它。
+fn retire_legacy_key(legacy: &FileKeyStore, key_store: &dyn KeyStore) {
+    let Ok(file_keys) = legacy.load() else { return };
+    if file_keys.is_empty() {
+        return;
+    }
+    let Ok(kept) = key_store.load() else { return };
+    if file_keys.iter().all(|k| kept.contains(k)) {
+        let _ = std::fs::remove_file(legacy.path());
+    }
+}
+
+fn now_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis())
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
     std::fs::rename(&tmp, path)

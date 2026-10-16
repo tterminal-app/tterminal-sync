@@ -5,10 +5,12 @@
 //! wire payload 與已解密的 UI snapshot,拿不到 vault key 本體。
 
 pub mod crypto;
+pub mod keystore;
 pub mod model;
 pub mod pairing;
 pub mod store;
 
+pub use keystore::{FileKeyStore, KeyStore, VaultKey};
 pub use model::{Record, RecordBody, WireRecord};
 pub use crypto::DecryptError;
 pub use pairing::{Pairing, PairingError};
