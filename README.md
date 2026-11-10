@@ -3,7 +3,7 @@
 [![ci](https://github.com/tterminal-app/tterminal-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/tterminal-app/tterminal-sync/actions/workflows/ci.yml)
 [![docker](https://github.com/tterminal-app/tterminal-sync/actions/workflows/docker.yml/badge.svg)](https://github.com/tterminal-app/tterminal-sync/pkgs/container/tterminal-sync)
 
-Self-hosted sync server for [tterminal](https://tterminal-app.github.io/tterminal-sync/), the SSH terminal for iPhone and iPad.
+Self-hosted sync server for [tterminal](https://tterminal-app.github.io/tterminal-sync/), the SSH terminal for iPhone and iPad ([App Store](https://apps.apple.com/app/id6823060766)).
 
 It keeps your hosts and SSH keys in sync across devices without an account and without trusting the server. Everything is encrypted on your device before it's sent; the server only ever stores ciphertext and the bare minimum it needs to order updates.
 
@@ -113,7 +113,7 @@ cargo test --workspace   # includes an end-to-end test with two clients convergi
 
 ## 中文
 
-tterminal 的自架同步伺服器。tterminal 是 iPhone / iPad 上的 SSH 終端機。
+tterminal 的自架同步伺服器。tterminal 是 iPhone / iPad 上的 SSH 終端機([App Store](https://apps.apple.com/tw/app/tterminal/id6823060766))。
 
 不用註冊帳號,也不用信任伺服器:主機和金鑰在你的裝置上就先加密,伺服器只存密文,以及排序更新所需的最少資訊。
 
